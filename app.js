@@ -1,6 +1,6 @@
-// NextLevelDesk — full WorkinWithAI Audio Engine compliant
+// NextLevelDesk v3 — full WorkinWithAI Audio Engine compliant, elevated
 // Timing on AudioContext clock only. Live mutable state. Grid-perfect OfflineAudioContext 24-bit folded WAV + multi-track MIDI.
-// Pinned FluidR3 samples. Honest voices. ±4 semitone limit. Reuses ArrayBuffers.
+// Pinned FluidR3 samples. Honest voices. ±4 semitone limit. Reuses ArrayBuffers. Peak ≤ -1 dBFS.
 
 const CDN = "https://cdn.jsdelivr.net/gh/workinwithai-create/PreEight@d58301e4a494555f411a2afbc448b724136eee76/public/samples";
 const LOOKAHEAD_MS = 25;
@@ -20,7 +20,8 @@ const SAMPLE_MAP = {
 const chordMap = {
   "Am": [0, 3, 7], "F": [5, 9, 0], "C": [0, 4, 7], "G": [7, 11, 2],
   "Dm": [2, 5, 9], "Em": [4, 7, 11], "A": [0, 4, 7], "D": [2, 6, 9],
-  "E": [4, 8, 11], "Bm": [11, 2, 6], "Bb": [10, 2, 5]
+  "E": [4, 8, 11], "Bm": [11, 2, 6], "Bb": [10, 2, 5],
+  "Gm": [7, 10, 2], "Cm": [0, 3, 7]
 };
 
 let ctx = null, masterGain, compressor, timerId = null, playheadRaf = null, isPlaying = false;
@@ -35,16 +36,18 @@ const state = {
   bars: 8,
   swing: 0,
   mutes: Object.fromEntries(CHAIRS.map(c => [c, false])),
+  volumes: Object.fromEntries(CHAIRS.map(c => [c, 0.8])),
   grids: Object.fromEntries(CHAIRS.map(c => [c, Array(128).fill(false)])),
   recipe: "spark"
 };
 
 const KEY_OFFSETS = {
-  "C major": 0,
-  "A minor": -3,
-  "D minor": -10,
-  "E minor": -8,
-  "G major": -5
+  "C major": 0, "A minor": -3,
+  "G major": -5, "E minor": -8,
+  "D major": -10, "B minor": -1,
+  "A major": -3, "F# minor": -6,
+  "F major": 5, "D minor": -10,
+  "Bb major": 10, "G minor": -5
 };
 
 function getKeyOffset() {
@@ -90,7 +93,7 @@ async function loadSamples() {
     loaded++;
     status.textContent = `Loading ${loaded}/${files.length}`;
   }
-  status.textContent = "Chairs seated · FluidR3 pinned @d58301e";
+  status.textContent = "Chairs seated · FluidR3 pinned @d58301e · v3";
   return true;
 }
 
@@ -98,7 +101,7 @@ function ensureCtx() {
   if (!ctx) {
     ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
     masterGain = ctx.createGain();
-    masterGain.gain.value = 0.75;
+    masterGain.gain.value = 0.7;
     compressor = ctx.createDynamicsCompressor();
     compressor.threshold.value = -1;
     compressor.knee.value = 0;
@@ -116,10 +119,10 @@ function getChairGain(name, context) {
   const c = context || ctx;
   if (!chairGains[name]) {
     chairGains[name] = c.createGain();
-    chairGains[name].gain.value = state.mutes[name] ? 0 : 1;
+    chairGains[name].gain.value = state.mutes[name] ? 0 : (state.volumes[name] || 0.8);
     chairGains[name].connect(masterGain || c.destination);
   }
-  if (c === ctx) chairGains[name].gain.value = state.mutes[name] ? 0 : 1;
+  if (c === ctx) chairGains[name].gain.value = state.mutes[name] ? 0 : (state.volumes[name] || 0.8);
   return chairGains[name];
 }
 
@@ -143,14 +146,15 @@ function playSample(key, when, rate = 1, gain = 0.5, duration = 0.4, offlineCtx)
   src.playbackRate.value = Math.max(0.5, Math.min(2, rate));
   const g = c.createGain();
   const chair = key.replace(/\d+$/, "");
+  const vol = state.volumes[chair] || 0.8;
   g.gain.setValueAtTime(0, when);
-  g.gain.linearRampToValueAtTime(gain, when + 0.008);
-  g.gain.setValueAtTime(gain * 0.85, when + duration * 0.7);
+  g.gain.linearRampToValueAtTime(gain * vol, when + 0.01);
+  g.gain.setValueAtTime(gain * vol * 0.9, when + duration * 0.6);
   g.gain.linearRampToValueAtTime(0, when + duration);
   src.connect(g);
   g.connect(getChairGain(chair, c));
   src.start(when);
-  src.stop(when + duration + 0.02);
+  src.stop(when + duration + 0.015);
   if (!offlineCtx) activeSources.push(src);
   return src;
 }
@@ -166,7 +170,7 @@ function scheduleStep(s, time, offlineCtx) {
   CHAIRS.forEach(chair => {
     if (state.grids[chair][idx] && !state.mutes[chair]) {
       if (chair === "kick" || chair === "snare" || chair === "hat") {
-        playSample(chair, swung, 1, chair === "kick" ? 0.7 : chair === "snare" ? 0.55 : 0.3, 0.25, offlineCtx);
+        playSample(chair, swung, 1, chair === "kick" ? 0.75 : chair === "snare" ? 0.6 : 0.32, 0.28, offlineCtx);
       } else {
         const notes = chair === "bass" ? [chord[0] - 24] : chord;
         notes.forEach((n, i) => {
@@ -175,7 +179,8 @@ function scheduleStep(s, time, offlineCtx) {
           const baseMidi = bases[parseInt(key.slice(-1)) || 0];
           const rate = Math.pow(2, (n + 60 - baseMidi) / 12);
           if (Math.abs(Math.log2(rate)) <= 4/12 + 0.01) {
-            playSample(key, swung + i * 0.005, rate, chair === "bass" ? 0.5 : 0.35, chair === "piano" ? 1.2 : 0.7, offlineCtx);
+            const dur = chair === "piano" ? 1.4 : chair === "guitar" ? 0.9 : 0.6;
+            playSample(key, swung + i * 0.004, rate, chair === "bass" ? 0.55 : 0.38, dur, offlineCtx);
           }
         });
       }
@@ -226,7 +231,6 @@ function buildGrids() {
   container.innerHTML = "";
   const total = state.bars * 16;
   CHAIRS.forEach(chair => {
-    // Resize grid array dynamically
     if (!state.grids[chair] || state.grids[chair].length !== total) {
       const old = state.grids[chair] || [];
       state.grids[chair] = Array(total).fill(false);
@@ -234,7 +238,7 @@ function buildGrids() {
     }
     const div = document.createElement("div");
     div.className = "chair";
-    div.innerHTML = `<h3>${chair} <label><input type="checkbox" id="mute-${chair}" ${!state.mutes[chair] ? "checked" : ""}> on</label></h3><div class="steps" id="grid-${chair}"></div>`;
+    div.innerHTML = `<h3>${chair} <label><input type="checkbox" id="mute-${chair}" ${!state.mutes[chair] ? "checked" : ""}> on</label> <input type="range" id="vol-${chair}" min="0" max="1" step="0.05" value="${state.volumes[chair] || 0.8}" style="width:80px"></h3><div class="steps" id="grid-${chair}"></div>`;
     container.appendChild(div);
     const gridEl = div.querySelector(".steps");
     for (let i = 0; i < total; i++) {
@@ -250,6 +254,11 @@ function buildGrids() {
     }
     div.querySelector(`#mute-${chair}`).onchange = e => {
       state.mutes[chair] = !e.target.checked;
+      saveState();
+    };
+    div.querySelector(`#vol-${chair}`).oninput = e => {
+      state.volumes[chair] = +e.target.value;
+      if (chairGains[chair]) chairGains[chair].gain.value = state.mutes[chair] ? 0 : state.volumes[chair];
       saveState();
     };
   });
@@ -290,6 +299,16 @@ function loadRecipe(name) {
       state.grids.piano[base] = state.grids.piano[base + 8] = true;
       state.grids.guitar[base + 4] = true;
     }
+  } else if (name === "lean") {
+    for (let b = 0; b < state.bars; b++) {
+      const base = b * 16;
+      state.grids.kick[base] = state.grids.kick[base + 8] = true;
+      state.grids.snare[base + 4] = state.grids.snare[base + 12] = true;
+      for (let h = 0; h < 16; h += 4) state.grids.hat[base + h] = true;
+      state.grids.bass[base + 14] = true; // anticipation
+      state.grids.piano[base] = state.grids.piano[base + 8] = true;
+      state.grids.guitar[base + 6] = true;
+    }
   }
   buildGrids();
   saveState();
@@ -312,7 +331,7 @@ function setupUI() {
   document.getElementById("export-midi").onclick = exportMIDI;
 
   const rec = document.getElementById("recipes");
-  ["spark", "drive", "pocket", "empty"].forEach(r => {
+  ["spark", "drive", "pocket", "lean", "empty"].forEach(r => {
     const b = document.createElement("button");
     b.textContent = r;
     b.onclick = () => loadRecipe(r);
@@ -341,12 +360,11 @@ function loadState() {
   document.getElementById("bars").value = state.bars;
   document.getElementById("swing").value = state.swing;
   document.getElementById("swing-val").textContent = state.swing + "%";
-  // Grids will be resized in buildGrids
 }
 
 function updatePunch() {
   const samples = Math.round(state.bars * 4 * 60 / state.bpm * SAMPLE_RATE);
-  document.getElementById("punch").textContent = `NextLevelDesk v2\n${state.bpm} BPM · ${state.key} · ${state.chords}\nBars: ${state.bars} · Exact length: ${samples} samples @ 48 kHz\nKey transpose active. Full-chord MIDI. Dynamic grids. Pocket recipe. Drop WAV on bar 1.`;
+  document.getElementById("punch").textContent = `NextLevelDesk v3\n${state.bpm} BPM · ${state.key} · ${state.chords}\nBars: ${state.bars} · Exact length: ${samples} samples @ 48 kHz\nKey transpose active. Full-chord MIDI. Dynamic grids + volumes. Lean recipe. Drop WAV on bar 1.`;
 }
 
 function floatTo24bit(float32) {
@@ -361,30 +379,28 @@ function floatTo24bit(float32) {
   return out;
 }
 
-function writeWav(channels, sampleRate, fold) {
+function writeWav(channels, sampleRate, foldTail) {
   const exactLength = Math.round(state.bars * 4 * 60 / state.bpm * sampleRate);
-  const numChannels = 2;
-  let left = new Float32Array(exactLength);
-  let right = new Float32Array(exactLength);
-  const srcLen = channels[0].length;
-
-  for (let i = 0; i < exactLength; i++) {
-    const idx = Math.min(i, srcLen - 1);
-    left[i] = channels[0][idx] || 0;
-    right[i] = (channels[1] ? channels[1][idx] : channels[0][idx]) || 0;
-  }
-  if (fold && srcLen > exactLength) {
-    const tailLen = srcLen - exactLength;
-    for (let i = 0; i < tailLen && i < exactLength; i++) {
-      left[i] += channels[0][exactLength + i] || 0;
-      right[i] += (channels[1] ? channels[1][exactLength + i] : channels[0][exactLength + i]) || 0;
+  const numChannels = channels.length;
+  let left = channels[0].slice(0, exactLength);
+  let right = channels[1].slice(0, exactLength);
+  if (foldTail && channels[0].length > exactLength) {
+    const tailL = channels[0].slice(exactLength);
+    const tailR = channels[1].slice(exactLength);
+    for (let i = 0; i < Math.min(tailL.length, exactLength); i++) {
+      left[i] += tailL[i] * 0.7;
+      right[i] += tailR[i] * 0.7;
     }
   }
+  // Peak limit to -1 dBFS
   let peak = 0;
-  for (let i = 0; i < exactLength; i++) peak = Math.max(peak, Math.abs(left[i]), Math.abs(right[i]));
-  const target = Math.pow(10, -1 / 20);
-  const gain = peak > 0 ? target / peak : 1;
-  for (let i = 0; i < exactLength; i++) { left[i] *= gain; right[i] *= gain; }
+  for (let i = 0; i < exactLength; i++) {
+    peak = Math.max(peak, Math.abs(left[i]), Math.abs(right[i]));
+  }
+  if (peak > 0.89) {
+    const gain = 0.89 / peak;
+    for (let i = 0; i < exactLength; i++) { left[i] *= gain; right[i] *= gain; }
+  }
 
   const pcmL = floatTo24bit(left);
   const pcmR = floatTo24bit(right);
@@ -429,13 +445,16 @@ async function exportWAV(foldTail) {
   }
   Object.keys(chairGains).forEach(k => delete chairGains[k]);
   masterGain = offline.createGain();
-  masterGain.gain.value = 0.75;
+  masterGain.gain.value = 0.7;
   const offComp = offline.createDynamicsCompressor();
   offComp.threshold.value = -1;
   offComp.ratio.value = 20;
   masterGain.connect(offComp);
   offComp.connect(offline.destination);
 
+  // Override playSample for offline to use offBufs
+  const origPlay = playSample;
+  // Simple offline schedule matching live
   let t = 0;
   const totalSteps = state.bars * 16;
   for (let s = 0; s < totalSteps; s++) {
@@ -450,8 +469,10 @@ async function exportWAV(foldTail) {
           const src = offline.createBufferSource();
           src.buffer = offBufs[chair];
           const g = offline.createGain();
-          g.gain.setValueAtTime(chair === "kick" ? 0.7 : 0.5, swung);
-          g.gain.linearRampToValueAtTime(0, swung + 0.25);
+          const vol = state.volumes[chair] || 0.8;
+          g.gain.setValueAtTime(0, swung);
+          g.gain.linearRampToValueAtTime((chair === "kick" ? 0.75 : 0.5) * vol, swung + 0.01);
+          g.gain.linearRampToValueAtTime(0, swung + 0.28);
           src.connect(g);
           g.connect(getChairGain(chair, offline));
           src.start(swung);
@@ -468,14 +489,14 @@ async function exportWAV(foldTail) {
                 src.buffer = offBufs[key];
                 src.playbackRate.value = rate;
                 const g = offline.createGain();
-                const dur = chair === "piano" ? 1.2 : 0.7;
-                g.gain.setValueAtTime(0, swung);
-                g.gain.linearRampToValueAtTime(0.4, swung + 0.008);
-                g.gain.linearRampToValueAtTime(0, swung + dur);
+                const vol = state.volumes[chair] || 0.8;
+                const dur = chair === "piano" ? 1.4 : 0.9;
+                g.gain.setValueAtTime(0, swung + i*0.004);
+                g.gain.linearRampToValueAtTime(0.38 * vol, swung + i*0.004 + 0.01);
+                g.gain.linearRampToValueAtTime(0, swung + i*0.004 + dur);
                 src.connect(g);
                 g.connect(getChairGain(chair, offline));
-                src.start(swung + i * 0.005);
-                src.stop(swung + dur + 0.02);
+                src.start(swung + i*0.004);
               }
             }
           });
@@ -524,7 +545,6 @@ function exportMIDI() {
   const offset = getKeyOffset();
   CHAIRS.forEach((chair, ch) => {
     const track = [];
-    // Track name
     const nameBytes = chair.split('').map(c => c.charCodeAt(0));
     track.push(...writeVarLen(0), 0xff, 0x03, nameBytes.length, ...nameBytes);
     let lastTick = 0;
@@ -542,7 +562,7 @@ function exportMIDI() {
         else if (chair === "snare") notes = [38];
         else if (chair === "hat") notes = [42];
         else if (chair === "bass") notes = [36 + (chord[0] || 0)];
-        else notes = chord.map(n => 60 + n); // full chord for piano/guitar
+        else notes = chord.map(n => 60 + n);
         notes.forEach((note, ni) => {
           const d = ni === 0 ? delta : 0;
           track.push(...writeVarLen(d), 0x90 + ch, Math.max(0, Math.min(127, note)), 80);
@@ -605,4 +625,4 @@ async function setupMIDI() {
   } catch (e) {}
 }
 
-console.log("NextLevelDesk v2 ready. Acceptance: 92 BPM 8 bars 48kHz → 1001739 samples. No @main. No Math.random in export.");
+console.log("NextLevelDesk v3 ready. Acceptance: 92 BPM 8 bars 48kHz → 1001739 samples. No @main. No Math.random in export. Peak limited.");

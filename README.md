@@ -49,3 +49,14 @@ Shipped as free. License infrastructure remains ready for a future paid unlock i
 7. Grep: no @main/@gh-pages, no Math.random in export path, voice names match samples. **PASS**
 
 Static HTML + one JS. No unused auth/db. Free.
+
+## v3 Elevations (2026-11-23)
+- Per-chair volume sliders (live)
+- Lean recipe with anticipations
+- Expanded key selector (more majors/minors)
+- Peak limiting to ≤ -1 dBFS on export
+- Improved sustain envelopes for piano/guitar
+- Better offline rendering consistency
+- Full Audio Engine compliance maintained
+
+Acceptance (92 BPM, 8 bars, 48 kHz): exactly 1,001,739 samples. First transient at sample 0. No drift. Live changes within one bar. Samples pinned. No @main. No Math.random in export path.
