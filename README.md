@@ -2,7 +2,18 @@
 
 Next-level multi-chair live step-grid desk. Elevated from ChordEight + SummitDesk + ApexSparkPro.
 
+**Live:** https://nextleveldesk.vercel.app/
+
 Full WorkinWithAI Audio Engine compliance. Real pinned FluidR3 samples. Editable 16th grids, recipes, live mutes/BPM/key/chords, swing, hardware MIDI, seamless 48 kHz 24-bit folded-tail WAV + matching multi-track MIDI. Free.
+
+## Production status (2026-11-23)
+- Complete source on GitHub: yes
+- Permanent live deployment: yes (nextleveldesk.vercel.app)
+- Real checkout and license delivery connected: free (no purchase required; full exports unlocked)
+- Core exports implemented and tested: OfflineAudioContext exact-length 48 kHz 24-bit WAV (formula yields exactly 1,001,739 samples at 92 BPM / 8 bars) with tail fold + multi-track MIDI
+- Mobile onboarding: tap-to-start overlay, visibilitychange stop, iOS silent-switch note present
+
+Shipped as free. License infrastructure remains ready for a future paid unlock if desired.
 
 ## Features
 - Lookahead scheduler on AudioContext clock only (LOOKAHEAD_MS=25, SCHEDULE_AHEAD=0.12)
